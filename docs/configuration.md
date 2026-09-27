@@ -42,6 +42,7 @@ CubeBall stores its settings in `plugins/CubeBall/config.yml`. After editing the
 `match.goal-animation.effect.*`
 : Controls the world effect played on goal blocks.
 
+The default effect is `BONE_MEAL_USE`.
 ## Arena Materials
 
 `arena.materials.ball-spawn`
@@ -89,3 +90,14 @@ CubeBall stores its settings in `plugins/CubeBall/config.yml`. After editing the
 
 `tasks.ball-update-period-ticks`
 : Period of the main ball physics scheduler.
+
+## Club capacity
+
+```yaml
+clubs:
+  max-members: 0
+```
+
+`0` means unlimited members. A positive value limits registrations and accepted transfers, not the minimum required to start a match. Each side needs one connected member. Managers count only when explicitly registered as members. Lowering the limit does not remove existing members. Apply changes with `/cb reload`.
+
+Persistent player and club data is stored separately in `clubs.yml`; reloading configuration does not reload this data file. See [Club matches](club-matches.md) for backup, recovery and verification instructions.

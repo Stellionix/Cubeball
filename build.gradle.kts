@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "my.crylonz"
-version = "1.4.1"
+version = "2.1.0"
 
 repositories {
     mavenCentral()
@@ -33,6 +33,7 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 tasks.processResources {
+    inputs.property("version", project.version)
     filteringCharset = "UTF-8"
     filesMatching("plugin.yml") {
         expand("version" to project.version)

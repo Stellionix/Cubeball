@@ -22,6 +22,10 @@ It targets Minecraft Java Edition servers running Bukkit-compatible software suc
 - Use countdowns, round restarts, score tracking, max goals, and overtime
 - Tune particles, sounds, goal animations, timings, and bounce behavior
 - Manage everything in game with `/cb`
+- Track persistent goals and assists with `/cb stats [player]`
+- Create clubs, appoint managers, agree transfers and play club matches
+
+See [club commands](docs/commands-and-perms.md) and the [complete club match example and server checklist](docs/club-matches.md).
 
 ## Compatibility
 
