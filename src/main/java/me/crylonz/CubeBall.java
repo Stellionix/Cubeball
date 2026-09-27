@@ -33,6 +33,8 @@ public class CubeBall extends JavaPlugin {
     public static HashMap<String, Ball> balls = new HashMap<>();
 
     public static Match match;
+    public static ClubStore clubStore;
+    public static int maxClubMembers;
 
     public static String BALL_MATCH_ID = "BALL_MATCH_ID_DONT_USE_IT";
     public static Plugin plugin;
@@ -170,14 +172,18 @@ public class CubeBall extends JavaPlugin {
         saveDefaultConfig();
         reloadConfig();
         applyConfigValues(getConfig());
+        clubStore = new ClubStore(getDataFolder().toPath().resolve("clubs.yml"), maxClubMembers, getLogger()::severe);
+        for (Player player : Bukkit.getOnlinePlayers()) rememberPlayer(player);
     }
 
     public void onDisable() {
+        if (match != null) { match.stop(); match = null; }
         balls.forEach((key, value) -> {
             if (value.getBall() != null) {
                 value.getBall().remove();
             }
         });
+        balls.clear();
     }
 
     private void launchRepeatingTask() {
@@ -213,7 +219,7 @@ public class CubeBall extends JavaPlugin {
 
         getServer().getScheduler().scheduleSyncRepeatingTask(this, () -> {
 
-            for (Iterator<Map.Entry<String, Ball>> iterator = balls.entrySet().iterator(); iterator.hasNext(); ) {
+            for (Iterator<Map.Entry<String, Ball>> iterator = new ArrayList<>(balls.entrySet()).iterator(); iterator.hasNext(); ) {
                 Map.Entry<String, Ball> entry = iterator.next();
                 String id = entry.getKey();
                 Ball ballData = entry.getValue();
@@ -221,18 +227,12 @@ public class CubeBall extends JavaPlugin {
                     applyBallVisualSettings(ballData.getBall());
                     ballData.getBall().setTicksLived(1);
 
-                    ArrayList<Player> players = new ArrayList<>();
-                    if (match != null) {
-                        players.addAll(match.getBlueTeam());
-                        players.addAll(match.getRedTeam());
-                    } else {
-                        players.addAll(Bukkit.getOnlinePlayers());
-                    }
-
                     ballData.getBall().getNearbyEntities(ballPlayerSearchRadius, ballPlayerSearchRadius, ballPlayerSearchRadius)
                             .stream().filter(entity -> entity instanceof Player)
                             .forEach(p -> {
                                 Player player = (Player) p;
+                                if (BALL_MATCH_ID.equals(id) && (match == null || match.teamOf(player) == Team.SPECTATOR
+                                        || (match.getMatchState() != IN_PROGRESS && match.getMatchState() != OVERTIME))) return;
                                 // if player is colliding the ball
                                 if (player.getLocation().distance(ballData.getBall().getLocation()) < ballDirectHitDistance || (
                                         player.getLocation().distance(ballData.getBall().getLocation()) < ballColumnHitDistance &&
@@ -266,9 +266,7 @@ public class CubeBall extends JavaPlugin {
                                     playBallHitSound(ballData.getBall().getLocation());
                                     ballData.setPlayerCollisionTick(0);
 
-                                    if (match != null) {
-                                        match.setLastTouchPlayer(player.getDisplayName());
-                                    }
+                                    if (match != null) match.touch(id, player);
                                 }
                             });
 
@@ -322,6 +320,8 @@ public class CubeBall extends JavaPlugin {
     }
 
     static void applyConfigValues(FileConfiguration config) {
+        maxClubMembers = Math.max(0, config.getInt("clubs.max-members", 0));
+        if (clubStore != null) clubStore.setMaxMembers(maxClubMembers);
         cubeBallBlock = material(config, "ball.material", Material.IRON_BLOCK);
         ballDropItem = config.getBoolean("ball.drop-item", false);
         ballInvulnerable = config.getBoolean("ball.invulnerable", true);
@@ -376,6 +376,13 @@ public class CubeBall extends JavaPlugin {
 
     private static Material material(FileConfiguration config, String path, Material fallback) {
         return Material.valueOf(config.getString(path, fallback.name()).toUpperCase(Locale.ROOT));
+    }
+
+    static void rememberPlayer(Player player) {
+        if (clubStore != null && clubStore.available()) {
+            try { clubStore.remember(player.getUniqueId(), player.getName()); }
+            catch (IllegalStateException e) { log.warning(e.getMessage()); }
+        }
     }
 
     private static Sound sound(FileConfiguration config, String path, Sound fallback) {

@@ -17,6 +17,10 @@ public class CBCommandExecutor implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
+        if (cmd.getName().equalsIgnoreCase("cb") && ClubCommands.handle(sender, args)) return true;
+        if (args.length > 1 && (args[0].equalsIgnoreCase("generate") || args[0].equalsIgnoreCase("remove")) && args[1].equals(BALL_MATCH_ID)) {
+            sender.sendMessage("[CubeBall] This ball ID is reserved for matches."); return true;
+        }
         Player player;
         if ((sender instanceof Player)) {
             player = (Player) sender;
@@ -28,7 +32,7 @@ public class CBCommandExecutor implements CommandExecutor {
                         reloadPluginConfiguration();
                         player.sendMessage("[Cubeball] " + ChatColor.GREEN + "Configuration reloaded.");
                     } else if (args[0].equalsIgnoreCase("match") && player.hasPermission("cubeball.manage")) {
-                        balls.remove(BALL_MATCH_ID);
+                        if (match != null) match.stop();
                         match = new Match();
                         match.scanSpawn(player);
                     } else if (args[0].equalsIgnoreCase("start") && player.hasPermission("cubeball.manage")) {
@@ -39,7 +43,7 @@ public class CBCommandExecutor implements CommandExecutor {
                         }
                     } else if (args[0].equalsIgnoreCase("stop") && player.hasPermission("cubeball.manage")) {
                         if (match != null) {
-                            balls.remove(BALL_MATCH_ID);
+                            match.stop();
                             match = null;
                             player.sendMessage("[Cubeball] " + ChatColor.GREEN + "Match cancelled ! To create a new match do /cb match");
                         } else {
@@ -88,6 +92,9 @@ public class CBCommandExecutor implements CommandExecutor {
                 }
                 if (args.length == 3) {
                     if (args[0].equalsIgnoreCase("team") && player.hasPermission("cubeball.manage")) {
+                        if (match != null && match.isClubMatch()) {
+                            player.sendMessage("[CubeBall] /cb team is only available for free matches."); return true;
+                        }
                         if (match != null) {
                             try {
                                 Team team = Team.valueOf(args[1].toUpperCase());

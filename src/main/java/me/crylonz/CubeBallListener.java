@@ -1,14 +1,11 @@
 package me.crylonz;
 
-import org.bukkit.Location;
-import org.bukkit.Sound;
 import org.bukkit.entity.EntityType;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.util.Vector;
 
-import java.util.concurrent.atomic.AtomicReference;
 
 import static java.lang.Double.max;
 import static java.lang.Double.min;
@@ -16,16 +13,20 @@ import static java.lang.Math.abs;
 import static me.crylonz.CubeBall.*;
 
 public class CubeBallListener implements Listener {
+    @EventHandler
+    public void onJoin(org.bukkit.event.player.PlayerJoinEvent event) {
+        rememberPlayer(event.getPlayer());
+        if (match != null) match.reconnect(event.getPlayer());
+    }
 
     @EventHandler
     public void blockChangeEvent(EntityChangeBlockEvent e) {
         if (e.getTo().equals(cubeBallBlock)) {
             if (e.getEntityType() == EntityType.FALLING_BLOCK) {
-                e.setCancelled(true);
-
-                Ball ballData = fetchBallContacting(e.getBlock().getLocation());
+                Ball ballData = balls.values().stream().filter(ball -> e.getEntity().equals(ball.getBall())).findFirst().orElse(null);
 
                 if (ballData != null) {
+                    e.setCancelled(true);
                     String ballId = ballData.getId();
 
                     if (ballData.getBall() != null) {
@@ -57,15 +58,4 @@ public class CubeBallListener implements Listener {
         }
     }
 
-    private Ball fetchBallContacting(Location location) {
-
-        AtomicReference<Ball> ballTrigger = new AtomicReference<>();
-        balls.forEach((id, ball) -> {
-            if (ball.getBall().getWorld().equals(location.getWorld()) &&
-                    ball.getBall().getLocation().distanceSquared(location) < listenerFetchDistanceSquared) {
-                ballTrigger.set(ball);
-            }
-        });
-        return ballTrigger.get();
-    }
 }

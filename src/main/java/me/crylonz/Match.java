@@ -7,6 +7,7 @@ import org.bukkit.entity.Player;
 import java.util.ArrayList;
 import java.util.Objects;
 import java.util.Random;
+import java.util.*;
 
 import static me.crylonz.CubeBall.*;
 import static me.crylonz.MatchState.*;
@@ -31,6 +32,79 @@ public class Match {
     private ArrayList<Location> redTeamSpawns;
     private int blueScore;
     private int redScore;
+    private final GoalContacts contacts = new GoalContacts();
+    private final List<Integer> tasks = new ArrayList<>();
+    private int taskGeneration;
+    private String blueClub, redClub;
+    private String blueName = "BLUE", redName = "RED";
+    private final Map<UUID, Team> roster = new HashMap<>();
+    private boolean frozen;
+
+    public Match(String blue, String red) {
+        this();
+        ClubStore.Club b = clubStore.club(blue), r = clubStore.club(red);
+        if (b.id().equals(r.id())) throw new IllegalArgumentException("Choose two different clubs.");
+        blueClub = b.id(); redClub = r.id(); blueName = b.name(); redName = r.name();
+        refreshRoster();
+    }
+
+    public boolean isClubMatch() { return blueClub != null; }
+
+    private void refreshRoster() {
+        if (!isClubMatch() || frozen) return;
+        clubStore.club(blueClub); clubStore.club(redClub);
+        roster.clear(); blueTeam.clear(); redTeam.clear();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            String club = clubStore.membership(player.getUniqueId());
+            if (blueClub.equals(club)) { roster.put(player.getUniqueId(), Team.BLUE); blueTeam.add(player); }
+            if (redClub.equals(club)) { roster.put(player.getUniqueId(), Team.RED); redTeam.add(player); }
+        }
+    }
+
+    public void reconnect(Player player) {
+        if (!isClubMatch() || !frozen || matchState == END) return;
+        Team team = roster.get(player.getUniqueId());
+        blueTeam.removeIf(p -> p.getUniqueId().equals(player.getUniqueId()));
+        redTeam.removeIf(p -> p.getUniqueId().equals(player.getUniqueId()));
+        if (team == Team.BLUE) blueTeam.add(player);
+        if (team == Team.RED) redTeam.add(player);
+    }
+
+    public Team teamOf(Player player) {
+        if (isClubMatch() && frozen) return roster.getOrDefault(player.getUniqueId(), Team.SPECTATOR);
+        if (blueTeam.contains(player)) return Team.BLUE;
+        if (redTeam.contains(player)) return Team.RED;
+        return Team.SPECTATOR;
+    }
+
+    public boolean touch(String ballId, Player player) {
+        if (!BALL_MATCH_ID.equals(ballId) || (matchState != IN_PROGRESS && matchState != OVERTIME)
+                || teamOf(player) == Team.SPECTATOR) return false;
+        contacts.touch(player.getUniqueId(), teamOf(player));
+        lastTouchPlayer = player.getName();
+        if (clubStore != null && clubStore.available()) {
+            try { clubStore.remember(player.getUniqueId(), player.getName()); }
+            catch (IllegalStateException e) { log.warning(e.getMessage()); }
+        }
+        return true;
+    }
+
+    private void later(Runnable action, long delay) {
+        int generation = taskGeneration;
+        tasks.add(getServer().getScheduler().scheduleSyncDelayedTask(plugin, () -> {
+            if (generation == taskGeneration && matchState != END) action.run();
+        }, delay));
+    }
+
+    private void cancelTasks() {
+        taskGeneration++;
+        for (int task : tasks) getServer().getScheduler().cancelTask(task);
+        tasks.clear();
+    }
+
+    public void stop() {
+        matchState = END; cancelTasks(); contacts.reset(); lastTouchPlayer = null; removeBall();
+    }
 
     public Match() {
         blueTeam = new ArrayList<>();
@@ -86,12 +160,18 @@ public class Match {
         p.sendMessage("Blue Goal  : " + (blueTeamGoalBlocks.size() != 0 ? ChatColor.GREEN + "OK" : ChatColor.RED + "KO") + " (" + blueTeamGoalBlocks.size() + ")");
         p.sendMessage("Red Goal   : " + (redTeamGoalBlocks.size() != 0 ? ChatColor.GREEN + "OK" : ChatColor.RED + "KO") + " (" + redTeamGoalBlocks.size() + ")");
         p.sendMessage("------------------");
-        p.sendMessage("Next step : Use /cb team to generate team");
+        p.sendMessage(isClubMatch() ? blueName + " vs " + redName + " — use /cb start" : "Next step : Use /cb team to generate team");
     }
 
     public void start(Player p) {
         if (matchState.equals(READY)) {
+            try { refreshRoster(); }
+            catch (IllegalArgumentException | IllegalStateException e) { p.sendMessage(e.getMessage()); return; }
+            if (isClubMatch() && (blueTeam.isEmpty() || redTeam.isEmpty())) {
+                p.sendMessage("[CubeBall] At least one connected member of each club is required."); return;
+            }
             if (!blueTeam.isEmpty() || !redTeam.isEmpty()) {
+                frozen = isClubMatch();
                 startDelayedRound();
                 matchTimer = matchDuration;
                 matchState = IN_PROGRESS;
@@ -110,6 +190,7 @@ public class Match {
     }
 
     private void startDelayedRound() {
+        contacts.reset(); lastTouchPlayer = null;
         blueTeam.forEach(player -> {
             int randomIndex = rand.nextInt(blueTeamSpawns.size());
             player.teleport(blueTeamSpawns.get(randomIndex));
@@ -120,10 +201,10 @@ public class Match {
             player.teleport(redTeamSpawns.get(randomIndex));
         });
 
-        getServer().getScheduler().scheduleSyncDelayedTask(plugin, () -> sendMessageToAllPlayer("3", "", 1), countdownStepTicks);
-        getServer().getScheduler().scheduleSyncDelayedTask(plugin, () -> sendMessageToAllPlayer("2", "", 1), countdownStepTicks * 2L);
-        getServer().getScheduler().scheduleSyncDelayedTask(plugin, () -> sendMessageToAllPlayer("1", "", 1), countdownStepTicks * 3L);
-        getServer().getScheduler().scheduleSyncDelayedTask(plugin, () -> {
+        later(() -> sendMessageToAllPlayer("3", "", 1), countdownStepTicks);
+        later(() -> sendMessageToAllPlayer("2", "", 1), countdownStepTicks * 2L);
+        later(() -> sendMessageToAllPlayer("1", "", 1), countdownStepTicks * 3L);
+        later(() -> {
             sendMessageToAllPlayer("GO !", "", 1);
             startRound();
         }, countdownStepTicks * 4L);
@@ -136,6 +217,7 @@ public class Match {
     }
 
     public boolean addPlayerToTeam(Player p, Team team) {
+        if (isClubMatch()) return false;
         if (p != null) {
             if (team.equals(Team.BLUE)) {
                 if (!blueTeam.contains(p)) {
@@ -166,6 +248,7 @@ public class Match {
 
             for (Location blockLocation : blueTeamGoalBlocks) {
                 if (ballLocation.getBlockX() == blockLocation.getBlockX() &&
+                        Objects.equals(ballLocation.getWorld(), blockLocation.getWorld()) &&
                         ballLocation.getBlockZ() == blockLocation.getBlockZ()) {
                     goal(Team.RED);
                     return;
@@ -174,6 +257,7 @@ public class Match {
 
             for (Location blockLocation : redTeamGoalBlocks) {
                 if (ballLocation.getBlockX() == blockLocation.getBlockX() &&
+                        Objects.equals(ballLocation.getWorld(), blockLocation.getWorld()) &&
                         ballLocation.getBlockZ() == blockLocation.getBlockZ()) {
                     goal(Team.BLUE);
                     return;
@@ -183,6 +267,13 @@ public class Match {
     }
 
     private void goal(Team team) {
+        GoalContacts.Credit credit = contacts.credit(team);
+        lastTouchPlayer = credit.scorer() == null ? null : lastTouchPlayer;
+        if (clubStore != null && clubStore.available()) {
+            try { clubStore.recordGoal(credit.scorer(), credit.assistant()); }
+            catch (IllegalStateException | IllegalArgumentException e) { log.warning(e.getMessage()); }
+        }
+        contacts.reset();
         if (Team.BLUE.equals(team)) {
             blueScore++;
             triggerGoalAnimation(Team.BLUE);
@@ -195,7 +286,7 @@ public class Match {
         if (matchState.equals(IN_PROGRESS) && (maxGoal == 0 || (blueScore != maxGoal && redScore != maxGoal))) {
             sendScoreToPlayer();
             matchState = GOAL;
-            getServer().getScheduler().scheduleSyncDelayedTask(plugin, this::startDelayedRound, roundRestartDelayTicks);
+            later(this::startDelayedRound, roundRestartDelayTicks);
         } else {
             matchState = GOAL;
             endMatch();
@@ -206,9 +297,9 @@ public class Match {
     public void endMatch() {
         String title;
         if (getBlueScore() > getRedScore()) {
-            title = ChatColor.BLUE + "BLUE" + ChatColor.GOLD + " TEAM WIN !";
+            title = ChatColor.BLUE + blueName + ChatColor.GOLD + " TEAM WIN !";
         } else if (getBlueScore() < getRedScore()) {
-            title = ChatColor.RED + "RED" + ChatColor.GOLD + " TEAM WIN !";
+            title = ChatColor.RED + redName + ChatColor.GOLD + " TEAM WIN !";
         } else {
             title = ChatColor.GOLD + "OVERTIME !";
             setMatchState(OVERTIME);
@@ -217,14 +308,13 @@ public class Match {
         String score = ChatColor.BLUE.toString() + getBlueScore() + ChatColor.WHITE + " - " + ChatColor.RED + getRedScore();
         sendMessageToAllPlayer(title, score, 3);
         if (!getMatchState().equals(OVERTIME)) {
-            matchState = END;
-            removeBall();
+            stop();
         }
     }
 
     public void sendScoreToPlayer() {
         String title = ChatColor.BLUE.toString() + blueScore + ChatColor.WHITE + " - " + ChatColor.RED + redScore;
-        String subtitle = ChatColor.BOLD.toString() + ChatColor.GOLD + lastTouchPlayer.toUpperCase() + ChatColor.RESET + " GOALS ! "
+        String subtitle = ChatColor.BOLD.toString() + ChatColor.GOLD + (lastTouchPlayer == null ? "GOAL ! " : lastTouchPlayer.toUpperCase(Locale.ROOT) + " SCORES ! ") + ChatColor.RESET
                 + "(" + computeSpeedGoal() + " km/h)";
         sendMessageToAllPlayer(title, subtitle, 3);
     }
@@ -287,14 +377,14 @@ public class Match {
     }
 
     public void displayTeams(Player p) {
-        p.sendMessage("BLUE TEAM : " + this.blueTeam.size() + " player(s)");
+        p.sendMessage(blueName + " : " + this.blueTeam.size() + " player(s)");
         this.blueTeam.forEach(player -> {
             if (player != null) {
                 p.sendMessage("-" + ChatColor.BLUE + player.getDisplayName());
             }
         });
 
-        p.sendMessage("RED TEAM : " + this.redTeam.size() + " player(s)");
+        p.sendMessage(redName + " : " + this.redTeam.size() + " player(s)");
         this.redTeam.forEach(player -> {
             if (player != null) {
                 p.sendMessage("-" + ChatColor.RED + player.getDisplayName());
@@ -356,6 +446,7 @@ public class Match {
     public boolean pause() {
         if (matchState.equals(IN_PROGRESS) || matchState.equals(OVERTIME)) {
             matchState = PAUSED;
+            cancelTasks(); contacts.reset(); lastTouchPlayer = null;
             removeBall();
             return true;
         }
@@ -364,6 +455,7 @@ public class Match {
 
     public boolean resume() {
         if (matchState.equals(PAUSED)) {
+            matchState = matchTimer > 0 ? IN_PROGRESS : OVERTIME;
             startDelayedRound();
             return true;
         }

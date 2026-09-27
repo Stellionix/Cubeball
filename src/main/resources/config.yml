@@ -132,3 +132,7 @@ tasks:
   match-timer-period-ticks: 20
   # Ball physics update task period.
   ball-update-period-ticks: 2
+
+clubs:
+  # Zero means unlimited. Managers are not automatically members.
+  max-members: 0
