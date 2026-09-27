@@ -82,7 +82,7 @@ public class CubeBall extends JavaPlugin {
     public static Sound titleSound = Sound.BLOCK_BEACON_ACTIVATE;
     public static float titleSoundVolume = 1.0F;
     public static float titleSoundPitch = 3.0F;
-    public static Effect goalEffect = Effect.VILLAGER_PLANT_GROW;
+    public static Effect goalEffect = resolveEffectName("BONE_MEAL_USE", Effect::valueOf);
     public static int goalEffectData = 3;
     public static boolean spawnGoalFireworks = true;
     public static double listenerBounceDivisor = 1.5;
@@ -343,7 +343,7 @@ public class CubeBall extends JavaPlugin {
         titleSound = sound(config, "match.title.sound.name", Sound.BLOCK_BEACON_ACTIVATE);
         titleSoundVolume = (float) config.getDouble("match.title.sound.volume", 1.0);
         titleSoundPitch = (float) config.getDouble("match.title.sound.pitch", 3.0);
-        goalEffect = effect(config, "match.goal-animation.effect.name", Effect.VILLAGER_PLANT_GROW);
+        goalEffect = effect(config, "match.goal-animation.effect.name");
         goalEffectData = config.getInt("match.goal-animation.effect.data", 3);
         spawnGoalFireworks = config.getBoolean("match.goal-animation.firework.enabled", true);
 
@@ -393,8 +393,27 @@ public class CubeBall extends JavaPlugin {
         return Particle.valueOf(config.getString(path, fallback.name()).toUpperCase(Locale.ROOT));
     }
 
-    private static Effect effect(FileConfiguration config, String path, Effect fallback) {
-        return Effect.valueOf(config.getString(path, fallback.name()).toUpperCase(Locale.ROOT));
+    private static Effect effect(FileConfiguration config, String path) {
+        String name = config.getString(path, "BONE_MEAL_USE");
+        Effect resolved = resolveEffectName(name, Effect::valueOf);
+        if (resolved != null) return resolved;
+        log.warning("[CubeBall] Unknown effect '" + name + "' at " + path
+                + "; using the default goal effect if supported.");
+        return resolveEffectName("BONE_MEAL_USE", Effect::valueOf);
+    }
+
+    // Resolve by name: Paper can retain a deprecated static alias without retaining an enum constant.
+    static <T> T resolveEffectName(String name, java.util.function.Function<String, T> lookup) {
+        String normalized = name.trim().toUpperCase(Locale.ROOT);
+        String[] candidates = switch (normalized) {
+            case "VILLAGER_PLANT_GROW", "BONE_MEAL_USE" -> new String[]{"BONE_MEAL_USE", "VILLAGER_PLANT_GROW"};
+            default -> new String[]{normalized};
+        };
+        for (String candidate : candidates) {
+            try { return lookup.apply(candidate); }
+            catch (IllegalArgumentException ignored) { /* Try the equivalent name on older servers. */ }
+        }
+        return null;
     }
 }
 

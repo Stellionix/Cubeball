@@ -8,8 +8,34 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class CubeBallConfigTest {
+
+    @Test
+    void resolvesLegacyNameWhenOnlyModernEnumConstantExists() {
+        assertEquals("modern", CubeBall.resolveEffectName(" villager_plant_grow ", name -> {
+            if (name.equals("BONE_MEAL_USE")) return "modern";
+            throw new IllegalArgumentException(name);
+        }));
+    }
+
+    @Test
+    void resolvesModernNameOnLegacyServer() {
+        assertEquals("legacy", CubeBall.resolveEffectName("BONE_MEAL_USE", name -> {
+            if (name.equals("VILLAGER_PLANT_GROW")) return "legacy";
+            throw new IllegalArgumentException(name);
+        }));
+    }
+
+    @Test
+    void missingEffectDoesNotThrow() {
+        assertNull(CubeBall.resolveEffectName("BONE_MEAL_USE", name -> { throw new IllegalArgumentException(name); }));
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("match.goal-animation.effect.name", "NOT_AN_EFFECT");
+        CubeBall.applyConfigValues(config);
+        assertEquals(CubeBall.resolveEffectName("BONE_MEAL_USE", Effect::valueOf), CubeBall.goalEffect);
+    }
 
     @Test
     void appliesDefaultLikeConfigurationValues() {
@@ -36,7 +62,7 @@ class CubeBallConfigTest {
         assertEquals(0, CubeBall.maxGoal);
         assertEquals(Material.EMERALD_BLOCK, CubeBall.ballSpawnBlock);
         assertEquals(Sound.BLOCK_WOOL_HIT, CubeBall.ballHitSound);
-        assertEquals(Effect.VILLAGER_PLANT_GROW, CubeBall.goalEffect);
+        assertEquals(Effect.valueOf("BONE_MEAL_USE"), CubeBall.goalEffect);
         assertEquals(20, CubeBall.matchTimerTaskPeriodTicks);
         assertEquals(2, CubeBall.ballUpdateTaskPeriodTicks);
     }

@@ -14,7 +14,7 @@
 # Example materials: SPONGE, IRON_BLOCK, BLUE_WOOL
 # Example sounds: BLOCK_WOOL_HIT, BLOCK_BEACON_ACTIVATE
 # Example particles: CLOUD, SMOKE, EXPLOSION
-# Example effects: VILLAGER_PLANT_GROW
+# Example effects: BONE_MEAL_USE (legacy VILLAGER_PLANT_GROW is also accepted)
 
 # Ball rendering and spawn behavior.
 ball:
@@ -68,7 +68,7 @@ match:
       enabled: true
     effect:
       # World effect played on goal blocks.
-      name: VILLAGER_PLANT_GROW
+      name: BONE_MEAL_USE
       # Optional numeric data used by the selected effect.
       data: 3
 

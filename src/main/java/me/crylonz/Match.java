@@ -373,7 +373,9 @@ public class Match {
         if (spawnGoalFireworks) {
             spawnFirework(block);
         }
-        Objects.requireNonNull(block.getWorld()).playEffect(block.getBlock().getLocation(), goalEffect, goalEffectData);
+        if (goalEffect != null) {
+            Objects.requireNonNull(block.getWorld()).playEffect(block.getBlock().getLocation(), goalEffect, goalEffectData);
+        }
     }
 
     public void displayTeams(Player p) {
